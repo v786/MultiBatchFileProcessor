@@ -19,14 +19,17 @@ Compose command.
 Open the web app at http://localhost:5173. The API is available at :8000,
 MailHog at :8025, Flower at :5555, and the mock vendor at :4000.
 
-Run the 50-file acceptance test against the live stack:
-```sh
-python tests/e2e/acceptance.py
-```
+`make dev-local` runs the same stack without Docker (fakeredis + moto + SQLite).
 
-## Tests (no Docker needed)
-    python -m venv .venv && .venv/bin/pip install -e ".[dev]"
-    .venv/bin/python -m pytest       # unit + in-process integration (SQLite, fakeredis, moto, mock vendor)
+## Tests
+```sh
+make install            # .venv with dev deps + web node_modules (re-runs only when deps change)
+make test               # unit + in-process integration (SQLite, fakeredis, moto, mock vendor) + web typecheck
+make test-unit          # or test-integration / test-web individually; PYTEST_ARGS="-k name" to filter
+make test-e2e           # 50-file acceptance run against a live stack (start it with make dev first)
+make lint typecheck     # ruff / mypy
+```
+`make help` lists every target.
 
 ## Layout
 `pipeline/` (api, tasks, dispatcher, resilience, errors, extract, db), `mock_vendor/`, `alembic/`, `web/` (React + TS),

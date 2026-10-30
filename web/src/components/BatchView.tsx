@@ -25,16 +25,29 @@ export function statusLine(t: TaskSummary, now: number): string {
   return s.text;
 }
 
+const FILTERS = {
+  all: { label: 'All', match: () => true },
+  active: { label: 'In progress', match: (t: TaskSummary) => tone(t.status) === 'busy' || tone(t.status) === 'idle' },
+  failed: { label: 'Failed', match: (t: TaskSummary) => tone(t.status) === 'bad' },
+  done: { label: 'Done', match: (t: TaskSummary) => tone(t.status) === 'ok' },
+} as const;
+type Filter = keyof typeof FILTERS;
+
+const FINAL = new Set(['COMPLETED', 'PARTIAL', 'FAILED']);
+
 export function BatchView(props: { batchId: string; local: LocalProgress; onNotice: (n: InAppNotice) => void }) {
   const { batch, live, error, refetch } = useBatch(props.batchId, props.onNotice);
   const [openTask, setOpenTask] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [filter, setFilter] = useState<Filter>('all');
   const now = useNow();
 
   if (error && !batch) return <section className="card"><p className="error">{error}</p></section>;
   if (!batch) return <section className="card"><p className="muted">Loading batch…</p></section>;
 
   const failedRetryable = batch.tasks.filter((t) => t.actions.includes('retry_delivery') || t.actions.includes('retry_extract')).length;
+
+  const shown = batch.tasks.filter(FILTERS[filter].match);
 
   const retryAll = async () => {
     setBusy(true);
@@ -67,11 +80,29 @@ export function BatchView(props: { batchId: string; local: LocalProgress; onNoti
       </div>
       <p className="summary">{batch.progress}% · {batch.summary}</p>
 
-      {failedRetryable > 0 && (
-        <button className="secondary" disabled={busy} onClick={() => void retryAll()}>
-          Retry {failedRetryable} failed
-        </button>
+      {FINAL.has(batch.status) && (
+        <div className={`banner ${batch.status === 'COMPLETED' ? 'ok' : ''}`}>
+          {batch.status === 'COMPLETED'
+            ? 'All files were processed and delivered.'
+            : 'The batch finished with failures. Open a failed file to see why and what you can do.'}
+        </div>
       )}
+
+      <div className="toolbar">
+        <div className="filters" role="tablist" aria-label="Filter files">
+          {(Object.keys(FILTERS) as Filter[]).map((f) => (
+            <button key={f} role="tab" aria-selected={filter === f} className={`chip ${filter === f ? 'active' : ''}`}
+              onClick={() => setFilter(f)}>
+              {FILTERS[f].label} <span className="muted">{batch.tasks.filter(FILTERS[f].match).length}</span>
+            </button>
+          ))}
+        </div>
+        {failedRetryable > 0 && (
+          <button className="secondary" disabled={busy} onClick={() => void retryAll()}>
+            {busy ? 'Retrying…' : `Retry ${failedRetryable} failed`}
+          </button>
+        )}
+      </div>
 
       <div className="table-wrap">
         <table className="tasks">
@@ -79,12 +110,17 @@ export function BatchView(props: { batchId: string; local: LocalProgress; onNoti
             <tr><th>File</th><th>Status</th><th className="w-progress">Progress</th><th>What's happening</th></tr>
           </thead>
           <tbody>
-            {batch.tasks.map((t) => {
+            {shown.length === 0 && (
+              <tr><td colSpan={4} className="muted">No files match this filter.</td></tr>
+            )}
+            {shown.map((t) => {
               const lp = props.local[t.fileId];
               const uploading = lp && !lp.failed && (t.status === 'PENDING_UPLOAD' || t.status === 'UPLOADING');
               const pct = uploading ? Math.round((40 * lp.loaded) / Math.max(1, lp.total)) : t.progress;
               return (
-                <tr key={t.taskId} onClick={() => setOpenTask(t.taskId)} className="clickable">
+                <tr key={t.taskId} onClick={() => setOpenTask(t.taskId)} className="clickable" tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpenTask(t.taskId); } }}
+                  aria-label={`${t.fileName}: ${label(t.status)}. Open details`}>
                   <td>
                     <div className="fname" title={t.fileName}>{t.fileName}</div>
                     <div className="muted small"><code>{t.taskId}</code> · {bytes(t.sizeBytes)}</div>

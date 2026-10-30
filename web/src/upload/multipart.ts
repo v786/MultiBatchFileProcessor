@@ -16,6 +16,7 @@ export function backoffMs(attempt: number, baseMs = 500, capMs = 15_000): number
 function putOnce(url: string, body: Blob, headers: Record<string, string>, onProgress: (loaded: number) => void,
   signal?: AbortSignal): Promise<string> {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(new DOMException('aborted', 'AbortError')); // queued after a cancel
     const xhr = new XMLHttpRequest();
     xhr.open('PUT', url);
     for (const [k, v] of Object.entries(headers)) xhr.setRequestHeader(k, v);

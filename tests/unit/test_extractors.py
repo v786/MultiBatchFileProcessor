@@ -20,12 +20,17 @@ def test_csv_with_partial_rows_succeeds_with_warnings():
     assert json.loads(out.to_json_bytes())["warningCount"] == 3
 
 
-def test_json_xlsx_pdf():
+def test_json_xlsx_pdf(monkeypatch):
+    from pipeline.extract import pdf as pdf_extractor
+
+    sleep_calls = []
+    monkeypatch.setattr(pdf_extractor, "sleep", sleep_calls.append)
     assert run(make_json(), "json").data["recordCount"] == 2
     sheet = run(make_xlsx(), "xlsx").data["sheets"][0]
     assert sheet["rowCount"] == 2 and sheet["columns"] == ["invoice", "amount"]
     pdf = run(make_pdf("Hello vendor"), "pdf").data
     assert pdf["pageCount"] == 1 and "Hello vendor" in pdf["pages"][0]["text"]
+    assert sleep_calls == [30]
 
 
 def test_corrupt_files():
